@@ -1,0 +1,131 @@
+pdb文件含义：
+#      原子序号 原子名 残基名 链ID 残基序号    X坐标     Y坐标     Z坐标
+ATOM      1      N     MET     A      1      -14.468    3.294    -3.213
+
+
+pLDDT、pTM,  i_ptm, pae, i_pae 这些是衡量蛋白质结构质量的分数
+pLDDT：结构置信度（0-1，越高越好）
+pTM：整体结构质量（0-1，越高越好）
+i_pTM：界面质量（0-1，越高越好）
+冲突数量：原子重叠数量（越少越好）
+结合能：结合强度（越低越好）
+形状互补性：两个蛋白质的匹配程度
+
+
+bindcraft逻辑：
+1. 初始化 → 加载配置，检查GPU，创建输出目录
+2. 设计循环 → 重复以下步骤直到获得足够好的设计：
+使用AlphaFold2"想象"一个结合剂蛋白质
+用MPNN优化蛋白质序列
+预测优化后序列的结构
+计算各种质量指标
+应用过滤器筛选好的设计
+3. 结果保存 → 将通过过滤器的设计保存到文件
+
+
+AlphaFold2（用于结构预测和生成）
+ProteinMPNN（用于蛋白质序列设计）
+PyRosetta（用于结构优化和分析）
+
+
+性能占用：
+CPU：114%（大概 1.1 个 CPU 核心在满载运行）
+占内存 (RAM)：7.1 GB
+占 GPU: 61.7 GB 显存
+
+设置找3个最终蛋白，耗时1小时22分钟。
+Finished all designs. Script execution for 8 trajectories took: 1 hours, 22 minutes
+
+
+
+基础参数说明：
+示例：
+{
+    "design_path": "/content/drive/My Drive/BindCraft/PDL1/",           # 设计结果保存路径
+    "binder_name": "PDL1",                                              # 结合剂名称
+    "starting_pdb": "/content/bindcraft/example/PDL1.pdb",              # 目标蛋白质结构文件
+    "chains": "A",                                                      # 目标蛋白质的链标识符
+    "target_hotspot_residues": "56",                                    # 目标结合位点残基编号
+    "lengths": [65, 150],                                               # 设计的结合剂长度范围
+    "number_of_final_designs": 100                                      # 需要获得的最终设计个数
+}
+
+高级参数说明：
+
+=== 基础设置 ===
+"omit_AAs": "C"                        -> 禁用的氨基酸类型（注意：如果某个位置只能使用被禁用的氨基酸，系统仍会使用它）
+"force_reject_AA": false                -> 是否强制拒绝包含禁用氨基酸的设计
+"design_algorithm": "4stage"            -> 设计算法选择（2stage/3stage/4stage/greedy/mcmc）
+"use_multimer_design": true             -> 是否使用AF2多聚体模型进行设计，另一个模型用于验证
+"num_recycles_design": 1                -> AF2设计时的循环次数
+"num_recycles_validation": 3            -> AF2结构预测和验证时的循环次数
+"sample_models": true                   -> 是否从AF2模型中随机采样参数，建议开启以避免过拟合
+"rm_template_seq_design": false         -> 设计时移除目标模板序列（增加目标灵活性）
+"rm_template_seq_predict": false        -> 重新预测时移除目标模板序列（增加目标灵活性）
+"rm_template_sc_design": false          -> 设计时移除目标模板侧链
+"rm_template_sc_predict": false         -> 重新预测时移除目标模板侧链
+"predict_initial_guess": false          -> 通过提供结合剂原子位置作为起始点来引入偏差，建议在MPNN优化后设计失败时使用
+"predict_bigbang": false                -> 在结构模块中引入原子位置偏差进行原子初始化，建议在目标和设计较大（超过600个氨基酸）时使用
+
+=== 设计迭代控制 ===
+"soft_iterations": 75                    -> 软迭代次数（在所有位置考虑所有氨基酸）
+"temporary_iterations": 45               -> 临时迭代次数（softmax，在所有位置考虑最可能的氨基酸）
+"hard_iterations": 5                     -> 硬迭代次数（one-hot编码，在所有位置考虑单个氨基酸）
+"greedy_iterations": 15                  -> 贪婪迭代次数（从PSSM采样随机突变以减少损失）
+"greedy_percentage": 1                   -> 每次贪婪迭代中突变蛋白质长度的百分比
+
+=== 设计权重（数值越高，优化该参数的权重越大）===
+"weights_plddt": 0.1                    -> 设计权重 - 设计链的pLDDT
+"weights_pae_intra": 0.4                -> 设计权重 - 设计链内的PAE
+"weights_pae_inter": 0.1                -> 设计权重 - 链间的PAE
+"weights_con_intra": 1.0                -> 设计权重 - 最大化设计链内的接触数量
+"weights_con_inter": 1.0                -> 设计权重 - 最大化链间的接触数量
+"intra_contact_distance": 14.0          -> 结合剂内接触的Cbeta-Cbeta截止距离
+"inter_contact_distance": 20.0          -> 结合剂和目标间接触的Cbeta-Cbeta截止距离
+"intra_contact_number": 2               -> 每个接触残基在链内应形成的接触数量，不包括直接邻居
+"inter_contact_number": 2               -> 每个接触残基在链间应形成的接触数量
+"weights_helicity": -0.3                -> 设计权重 - 设计的螺旋倾向，默认0，负值偏向β折叠
+"random_helicity": false                -> 是否随机采样螺旋权重，范围-1到1
+
+=== 额外损失函数 ===
+"use_i_ptm_loss": true                  -> 是否使用i_ptm损失来优化界面pTM分数
+"weights_iptm": 0.05                    -> 设计权重 - 链间的i_ptm
+"use_rg_loss": true                     -> 是否使用回转半径损失
+"weights_rg": 0.3                       -> 设计权重 - 结合剂的回转半径权重
+"use_termini_distance_loss": false      -> 是否尝试最小化结合剂N端和C端之间的距离，对移植有用
+"weights_termini_loss": 0.1             -> 设计权重 - 结合剂N端和C端距离最小化权重
+
+=== MPNN设置 ===
+"enable_mpnn": true                     -> 是否启用MPNN设计
+"mpnn_fix_interface": true              -> 是否固定起始轨迹中设计的界面
+"num_seqs": 20                          -> 每个结合剂采样和预测的MPNN生成序列数量
+"max_mpnn_sequences": 2                 -> 如果多个序列通过过滤器，每个轨迹最多保存的MPNN序列数量
+"sampling_temp": 0.1                    -> 氨基酸的采样温度，T=0.0表示取最大值，T>>1.0表示随机采样
+"backbone_noise": 0.00                  -> 采样期间的骨架噪声，0.00-0.02是好的值
+"model_path": "v_48_020"                -> MPNN模型权重的路径
+"mpnn_weights": "soluble"               -> 是否使用"原始"mpnn权重或"可溶"权重
+"save_mpnn_fasta": false                -> 是否将MPNN序列保存为fasta文件，通常不需要，因为序列也在CSV文件中
+
+=== AF2设计高级设置 ===
+"optimise_beta": true                   -> 如果检测到β折叠轨迹，是否优化预测
+"optimise_beta_extra_soft": 0           -> 如果检测到β折叠，添加的额外软迭代次数
+"optimise_beta_extra_temp": 0           -> 如果检测到β折叠，添加的额外临时迭代次数
+"optimise_beta_recycles_design": 3      -> 如果检测到β折叠，设计时的循环次数
+"optimise_beta_recycles_valid": 3       -> 如果检测到β折叠，重新预测时的循环次数
+
+=== 脚本优化 ===
+"remove_unrelaxed_trajectory": true      -> 删除未松弛的设计轨迹PDB文件，保留松弛的PDB
+"remove_unrelaxed_complex": true         -> 删除未松弛的预测MPNN优化复合物PDB文件，保留松弛的PDB
+"remove_binder_monomer": true            -> 评分后删除预测的结合剂单体PDB文件以节省空间
+"zip_animations": true                   -> 最后压缩动画轨迹文件夹以节省空间
+"zip_plots": true                        -> 最后压缩图表轨迹文件夹以节省空间
+"save_trajectory_pickle": false          -> 保存生成轨迹的pickle文件，注意，占用大量存储空间！
+"save_design_animations": true           -> 保存设计动画
+"save_design_trajectory_plots": true     -> 保存设计轨迹图表
+
+=== 监控和调试设置 ===
+"max_trajectories": false               -> 生成的最大轨迹数，用于基准测试
+"enable_rejection_check": true          -> 启用拒绝率检查
+"acceptance_rate": 0.01                 -> 应产生通过过滤器的设计的轨迹比例，如果成功设计的比例低于此比例，脚本将停止，你应该调整设计权重
+"start_monitoring": 600                 -> 开始监控acceptance_rate的轨迹数，不要设置太低，可能过早终止
+
