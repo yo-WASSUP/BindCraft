@@ -46,12 +46,15 @@ Finished all designs. Script execution for 8 trajectories took: 1 hours, 22 minu
     "starting_pdb": "/content/bindcraft/example/PDL1.pdb",              # 目标蛋白质结构文件
     "chains": "A",                                                      # 目标蛋白质的链标识符
     "target_hotspot_residues": "56",                                    # 目标结合位点残基编号
+    which position to target for binder design, for example `1,2-10` or chain specific `A1-10,B1-20` or entire chains `A`, set to null if you want AF2 to select binding site; better to select multiple target residues or a small patch to reduce search space for binder
     "lengths": [65, 150],                                               # 设计的结合剂长度范围
     "number_of_final_designs": 100                                      # 需要获得的最终设计个数
 }
+We recommend to generate at least a 100 final designs passing all filters, then order the top 5-20 for experimental characterisation.
+如果需要高亲和力粘合剂，则最好筛选更多，因为用于排名的IPTM度量不是对亲和力的良好预测指标，但已被证明是结合的良好二进制预测指标。
+If high affinity binders are required, it is better to screen more, as the ipTM metric used for ranking is not a good predictor for affinity, but has been shown to be a good binary predictor of binding.
 
 高级参数说明：
-
 === 基础设置 ===
 "omit_AAs": "C"                        -> 禁用的氨基酸类型（注意：如果某个位置只能使用被禁用的氨基酸，系统仍会使用它）
 "force_reject_AA": false                -> 是否强制拒绝包含禁用氨基酸的设计
